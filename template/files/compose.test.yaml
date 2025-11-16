@@ -13,8 +13,15 @@ x-pg-common: &pg-common
     timeout: 5s
     retries: 5
     start_period: 10s
-  expose:
-    - 5432
+
+x-redis-common: &redis-common
+  image: valkey/valkey:8-alpine
+  healthcheck:
+    test: ["CMD", "redis-cli", "ping"]
+    interval: 5s
+    timeout: 3s
+    retries: 3
+    start_period: 3s
 
 x-rails-common: &rails-common
   image: local/rails-app:test
@@ -22,46 +29,83 @@ x-rails-common: &rails-common
     context: .
     args:
       RAILS_ENV: test
-      BUNDLE_DEPLOYMENT: false
+      BUNDLE_DEPLOYMENT: "false"
       BUNDLE_WITHOUT: ""
       APP_UID: ${APP_UID:-1000}
       APP_GID: ${APP_GID:-1000}
   depends_on:
     pg:
       condition: service_healthy
+    redis_cache:
+      condition: service_healthy
+    redis_session:
+      condition: service_healthy
 
 services:
   pg:
     <<: [*common, *pg-common]
     environment:
-      POSTGRES_PASSWORD_FILE: ${APP_POSTGRES_PASSWORD_FILE}
+      POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_USER: ${APP_POSTGRES_USER}
       POSTGRES_DB: ${APP_POSTGRES_DB}
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    secrets:
-      - pg_password
+  redis_cache:
+    <<: [*common, *redis-common]
+    command: redis-server --save ""
+  redis_session:
+    <<: [*common, *redis-common]
+    command: redis-server --save ""
   rails:
     <<: [*common, *rails-common]
     environment:
       APP_RAILS_MAX_THREADS: 5
       APP_RAILS_MIN_THREADS: 5
       APP_WEB_CONCURRENCY: 0
-    volumes:
-      - .:/rails
-      - rails_logs:/rails/log
-      - rails_tmp:/rails/tmp
-    secrets:
-      - pg_password
-      - rails_secret_key_base
+      APP_ADMIN_EMAIL: admin@example.com
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /rails
+          ignore:
+            # Version control
+            - .git/
+            - .github/
 
-volumes:
-  pg_data:
-  rails_logs:
-  rails_tmp:
+            # Dependencies
+            - .bundle/
+            - vendor/bundle/
 
-secrets:
-  pg_password:
-    file: ./.secrets/pg_password
-  rails_secret_key_base:
-    file: ./.secrets/rails_secret_key_base
+            # Environment & secrets
+            - .env*
+            - .secrets/
+
+            # Runtime data
+            - .srv/
+            - log/
+            - tmp/
+            - storage/
+
+            # Caches
+            - .cache/
+            - .rubocop-*
+            - .ruby-lsp/
+
+            # Editor & IDE
+            - .claude/
+            - .serena/
+            - CLAUDE.md
+            - .vscode/
+            - .idea/
+            - .devcontainer/
+
+            # Docker files
+            - .dockerignore
+            - Dockerfile*
+            - compose.yaml
+            - compose.yml
+            - compose.*.yaml
+            - compose.*.yml
+
+            # Deployment
+            - .kamal/
+            - bin/deploy

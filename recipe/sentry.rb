@@ -32,6 +32,9 @@ initializer "sentry.rb", <<~RUBY
   # Sentry configuration for error tracking and performance monitoring
   # https://docs.sentry.io/platforms/ruby/guides/rails/
 
+  # Only initialize Sentry when DSN is configured
+  return if AppConfig.instance.sentry_dsn.blank?
+
   Sentry.init do |config|
     # DSN (Data Source Name) - get this from your Sentry project settings
     # If not set, Sentry will be disabled (safe for development)

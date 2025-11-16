@@ -2,41 +2,42 @@ gem "rspec-rails", group: [:test, :development]
 gem "shoulda-matchers", group: :test
 gem "factory_bot_rails", group: [:test, :development]
 gem "faker", group: [:test, :development]
-gem "mock_redis", group: :test
 gem "prosopite", group: :test
 
-# Generate RSpec installation
-generate "rspec:install"
+after_bundle do
+  # Generate RSpec installation
+  generate "rspec:install"
 
-# Override .rspec configuration to enable deprecation warnings
-copy_file from_files(".rspec"), ".rspec", force: true
+  # Override .rspec configuration to enable deprecation warnings
+  copy_file from_files(".rspec"), ".rspec", force: true
 
-start = 8
-lines = File.readlines("spec/rails_helper.rb")
+  start = 8
+  lines = File.readlines("spec/rails_helper.rb")
 
-# Sort support files to ensure proper loading order
-# bcrypt and seeds must be loaded early
-support_files = Dir[from_files("spec/support/*")].sort_by do |f|
-  name = File.basename(f, ".rb")
-  case name
-  when "bcrypt" then "0_bcrypt"
-  when "seeds" then "1_seeds"
-  else name
+  # Sort support files to ensure proper loading order
+  # bcrypt and seeds must be loaded early
+  support_files = Dir[from_files("spec/support/*")].sort_by do |f|
+    name = File.basename(f, ".rb")
+    case name
+    when "bcrypt" then "0_bcrypt"
+    when "seeds" then "1_seeds"
+    else name
+    end
   end
-end
 
-support_files.each do |f|
-  lib_name = File.basename(f, ".rb")
-  file "spec/support/#{lib_name}.rb", File.read(f)
-  if lib_name == "deprecation_tracking"
-    lines.insert(start, "# require \"support/#{lib_name}\"\n")
-  else
-    lines.insert(start, "require \"support/#{lib_name}\"\n")
+  support_files.each do |f|
+    lib_name = File.basename(f, ".rb")
+    file "spec/support/#{lib_name}.rb", File.read(f)
+    if lib_name == "deprecation_tracking"
+      lines.insert(start, "# require \"support/#{lib_name}\"\n")
+    else
+      lines.insert(start, "require \"support/#{lib_name}\"\n")
+    end
+    start += 1
   end
-  start += 1
-end
 
-File.open("spec/rails_helper.rb", "w") do |f|
-  f.write(lines.join)
-  f.flush
+  File.open("spec/rails_helper.rb", "w") do |f|
+    f.write(lines.join)
+    f.flush
+  end
 end

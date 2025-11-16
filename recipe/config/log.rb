@@ -31,6 +31,9 @@ environment <<~RUBY, env: "production"
       ip: event.payload[:ip]
     }
   end
+
+  # Output logs to STDOUT for Docker container best practices
+  config.logger = ActiveSupport::Logger.new($stdout)
 RUBY
 
 # Development environment: Human-readable logs
@@ -40,6 +43,9 @@ environment <<~RUBY, env: "development"
 
   # Show detailed logs in development
   config.log_level = :debug
+
+  # Output logs to STDOUT for Docker container best practices
+  config.logger = ActiveSupport::Logger.new($stdout)
 RUBY
 
 # Test environment: Minimal logs

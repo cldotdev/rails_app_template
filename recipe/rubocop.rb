@@ -1,9 +1,6 @@
 # RuboCop - Ruby Code Style Checker
 # https://github.com/rubocop/rubocop
 #
-# RuboCop is a Ruby static code analyzer and formatter based on the
-# community Ruby style guide.
-#
 # Features:
 # - Automatic code style enforcement
 # - Auto-correction for many violations
@@ -13,14 +10,13 @@
 # Extensions:
 # - rubocop-rails: Rails-specific cops
 # - rubocop-rspec: RSpec-specific cops
-#
-# Usage:
-#   bundle exec rubocop                  # Check all files
-#   bundle exec rubocop -A               # Auto-correct violations
-#   bundle exec rubocop app/models       # Check specific directory
-#
-# Note: .rubocop.yml configuration is provided by this template
+# - rubocop-rspec_rails: RSpec Rails-specific cops
+# - rubocop-factory_bot: FactoryBot-specific cops
+# - rubocop-rake: Rake-specific cops
 
 gem "rubocop"
 gem "rubocop-rails"
-gem "rubocop-rspec"
+gem "rubocop-rake", "~> 0.6"
+gem "rubocop-rspec", "~> 3.7"
+gem "rubocop-rspec_rails", "~> 2.31"
+gem "rubocop-factory_bot", "~> 2.27"

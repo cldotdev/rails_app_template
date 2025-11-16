@@ -9,7 +9,7 @@ error_log        /var/log/nginx/error.log warn;
 pid              /var/run/nginx.pid;
 
 events {
-  worker_connections 1024;
+  worker_connections 512;
 }
 
 http {
@@ -64,6 +64,5 @@ http {
 }
 EOF
 
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+RUN ln -sf /dev/stdout /var/log/nginx/access.log && \
+    ln -sf /dev/stderr /var/log/nginx/error.log

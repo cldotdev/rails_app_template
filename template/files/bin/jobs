@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+# Start Sidekiq worker process
+# Configuration is loaded from config/sidekiq.yml
+bundle exec sidekiq

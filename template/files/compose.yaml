@@ -1,9 +1,10 @@
+name: "rails-app-dev"
+
 x-common: &common
+  restart: unless-stopped
   env_file:
     - .env.example
     - .env
-  networks:
-    - rails_app
 
 x-pg-common: &pg-common
   image: postgres:18-alpine
@@ -28,72 +29,135 @@ x-redis-common: &redis-common
     - 6379
 
 x-rails-common: &rails-common
-  image: local/rails_app:latest
+  image: local/rails-app:dev
   build:
     context: .
     args:
-      # Sentry release tracking (optional, for correlating errors with deployments)
-      # REVISION is set during Docker build and baked into the image
-      REVISION: ${REVISION}
+      RAILS_ENV: development
+      BUNDLE_DEPLOYMENT: "false"
+      BUNDLE_WITHOUT: ""
+      APP_UID: ${APP_UID:-1000}
+      APP_GID: ${APP_GID:-1000}
+  depends_on:
+    pg:
+      condition: service_healthy
+    redis_cache:
+      condition: service_healthy
+    redis_cable:
+      condition: service_healthy
+    redis_session:
+      condition: service_healthy
+    redis_queue:
+      condition: service_healthy
+  secrets:
+    - mailer_smtp_password
+  volumes:
+    - ./.srv/server/storage:/rails/storage
+  develop:
+    watch:
+      - action: sync
+        path: .
+        target: /rails
+        ignore:
+          # Version control
+          - .git/
+          - .github/
+
+          # Dependencies
+          - .bundle/
+          - vendor/bundle/
+
+          # Environment & secrets
+          - .env*
+          - .secrets/
+
+          # Runtime data
+          - .srv/
+          - log/
+          - tmp/
+          - storage/
+
+          # Caches
+          - .cache/
+          - .rubocop-*
+          - .ruby-lsp/
+
+          # Editor & IDE
+          - .claude/
+          - .serena/
+          - CLAUDE.md
+          - .vscode/
+          - .idea/
+          - .devcontainer/
+
+          # Docker files
+          - .dockerignore
+          - Dockerfile*
+          - compose.yaml
+          - compose.yml
+          - compose.*.yaml
+          - compose.*.yml
+
+          # Deployment
+          - .kamal/
+          - bin/deploy
 
 services:
   pg:
     <<: [*common, *pg-common]
     environment:
-      POSTGRES_PASSWORD_FILE: ${APP_POSTGRES_PASSWORD_FILE}
+      POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_USER: ${APP_POSTGRES_USER}
       POSTGRES_DB: ${APP_POSTGRES_DB}
     volumes:
-      - pg_data:/var/lib/postgresql/data
-    secrets:
-      - pg_password
+      - ./.srv/pg/data:/var/lib/postgresql
   redis_cache:
     <<: [*common, *redis-common]
-    volumes:
-      - redis_cache_data:/data
     command:
       - sh
       - -c
       - |
         redis-server \
-          --requirepass "$$(cat $$APP_REDIS_CACHE_PASSWORD_FILE)" \
           --maxmemory 1gb \
           --maxmemory-policy allkeys-lru \
           --save ""
-    secrets:
-      - redis_cache_password
   redis_cable:
     <<: [*common, *redis-common]
-    volumes:
-      - redis_cable_data:/data
     command:
       - sh
       - -c
       - |
         redis-server \
-          --requirepass "$$(cat $$APP_REDIS_CABLE_PASSWORD_FILE)" \
           --maxmemory 512mb \
           --maxmemory-policy noeviction \
           --save ""
-    secrets:
-      - redis_cable_password
   redis_session:
     <<: [*common, *redis-common]
     volumes:
-      - redis_session_data:/data
+      - ./.srv/redis_session/data:/data
     command:
       - sh
       - -c
       - |
         redis-server \
-          --requirepass "$$(cat $$APP_REDIS_SESSION_PASSWORD_FILE)" \
           --maxmemory 512mb \
           --maxmemory-policy noeviction \
           --appendonly yes \
           --appendfsync everysec
-    secrets:
-      - redis_session_password
-  rails:
+  redis_queue:
+    <<: [*common, *redis-common]
+    volumes:
+      - ./.srv/redis_queue/data:/data
+    command:
+      - sh
+      - -c
+      - |
+        redis-server \
+          --maxmemory 512mb \
+          --maxmemory-policy noeviction \
+          --appendonly yes \
+          --appendfsync everysec
+  server:
     <<: [*common, *rails-common]
     healthcheck:
       test: ['CMD', "curl", "-fsS", "http://localhost:3000/up"]
@@ -102,20 +166,33 @@ services:
       retries: 3
       start_period: 40s
     stop_signal: SIGTERM
-    stop_grace_period: 40s
+    stop_grace_period: 10s
+    environment:
+      APP_RAILS_MAX_THREADS: 5
+      APP_RAILS_MIN_THREADS: 5
+      APP_WEB_CONCURRENCY: 0
+      APP_SESSION_COOKIE_SAME_SITE: none
     expose:
       - 3000
-    volumes:
-      - rails_logs:/rails/log
-      - rails_tmp:/rails/tmp
-    secrets:
-      - pg_password
-      - redis_cache_password
-      - redis_cable_password
-      - redis_session_password
-      - rails_secret_key_base
-      - mailer_smtp_password
+  worker:
+    <<: [*common, *rails-common]
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'pgrep', '-f', 'sidekiq']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    stop_signal: SIGTERM
+    stop_grace_period: 10s
+    environment:
+      APP_DB_MIGRATION: false
+      APP_SIDEKIQ_CONCURRENCY: 2
+    command: ["./bin/jobs"]
   cloudflared:
+    <<: *common
     image: cloudflare/cloudflared:latest
     healthcheck:
       test: ["CMD", "cloudflared", "tunnel", "--metrics", "localhost:2000", "ready"]
@@ -126,40 +203,9 @@ services:
     command: tunnel --metrics 0.0.0.0:2000 run --token-file /run/secrets/cf_tunnel_token
     secrets:
       - cf_tunnel_token
-    networks:
-      - rails_app
-
-volumes:
-  pg_data:
-  redis_cache_data:
-  redis_cable_data:
-  redis_session_data:
-  rails_logs:
-  rails_tmp:
 
 secrets:
-  pg_password:
-    external: true
-    name: rails_app_pg_password
-  redis_cache_password:
-    external: true
-    name: rails_app_redis_cache_password
-  redis_cable_password:
-    external: true
-    name: rails_app_redis_cable_password
-  redis_session_password:
-    external: true
-    name: rails_app_redis_session_password
-  rails_secret_key_base:
-    external: true
-    name: rails_app_rails_secret_key_base
   mailer_smtp_password:
-    external: true
-    name: rails_app_mailer_smtp_password
+    file: ./.secrets/mailer_smtp_password
   cf_tunnel_token:
-    external: true
-    name: rails_app_cf_tunnel_token
-
-networks:
-  rails_app:
-    external: true
+    file: ./.secrets/cf_tunnel_token

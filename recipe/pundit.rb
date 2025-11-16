@@ -27,4 +27,6 @@
 
 gem "pundit"
 
-generate "pundit:install"
+after_bundle do
+  generate "pundit:install"
+end

@@ -20,41 +20,14 @@ database_yml_content = <<~YAML
   development:
     primary:
       <<: *default
-    queue:
-      <<: *default
-      migrations_paths: db/queue_migrate
-    cache:
-      <<: *default
-      migrations_paths: db/cache_migrate
-    cable:
-      <<: *default
-      migrations_paths: db/cable_migrate
 
   test:
     primary:
       <<: *default
-    queue:
-      <<: *default
-      migrations_paths: db/queue_migrate
-    cache:
-      <<: *default
-      migrations_paths: db/cache_migrate
-    cable:
-      <<: *default
-      migrations_paths: db/cable_migrate
 
   production:
     primary:
       <<: *default
-    queue:
-      <<: *default
-      migrations_paths: db/queue_migrate
-    cache:
-      <<: *default
-      migrations_paths: db/cache_migrate
-    cable:
-      <<: *default
-      migrations_paths: db/cable_migrate
 YAML
 
 remove_file "config/database.yml"

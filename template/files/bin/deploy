@@ -1,0 +1,224 @@
+#!/bin/bash
+set -euo pipefail
+
+# Load environment variables
+load_env() {
+  set -a
+  source .env.example
+  source .env.prod
+  set +a
+}
+
+# Set deployment variables
+set_deploy_vars() {
+  export APP_STACK_NAME="${APP_STACK_NAME:-rails-app}"
+  export APP_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+  export APP_REVISION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  export APP_IMAGE_NAME="${APP_IMAGE_NAME:-local/rails-app:$APP_REVISION}"
+}
+
+# Show help message
+show_help() {
+  cat << EOF
+Usage: bin/deploy COMMAND [OPTIONS]
+
+Docker Stack deployment tool for Rails application
+
+COMMANDS:
+  build                Build Docker image
+  up                   Deploy services to Docker Stack
+  down                 Remove Docker Stack
+  restart [SERVICE]    Restart service(s)
+  status               Show service status
+  logs [SERVICE]       Show service logs
+
+OPTIONS:
+  --build              Build image before deploying (up command only)
+  --help, -h           Show this help message
+
+EXAMPLES:
+  bin/deploy build                    # Build Docker image
+  bin/deploy up                       # Deploy without building
+  bin/deploy up --build               # Build and deploy
+  bin/deploy down                     # Remove stack
+  bin/deploy restart                  # Restart all services
+  bin/deploy restart server           # Restart server service
+  bin/deploy status                   # Show service status
+  bin/deploy logs server              # Show server logs
+
+ENVIRONMENT VARIABLES:
+  APP_STACK_NAME      Stack name (default: rails-app)
+  APP_IMAGE_NAME      Image name (default: local/rails-app:APP_REVISION)
+
+EOF
+}
+
+# Build Docker image
+cmd_build() {
+  echo "Building Docker image..."
+  docker build \
+    --build-arg APP_VERSION="$APP_VERSION" \
+    --build-arg APP_REVISION="$APP_REVISION" \
+    -t "$APP_IMAGE_NAME" \
+    .
+
+  export APP_IMAGE_DIGEST=$(docker image inspect --format='{{.Id}}' "$APP_IMAGE_NAME")
+  echo "Built image: $APP_IMAGE_NAME"
+  echo "Image digest: $APP_IMAGE_DIGEST"
+}
+
+# Deploy to Docker Stack
+cmd_up() {
+  local do_build=false
+
+  # Parse options
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --build)
+        do_build=true
+        shift
+        ;;
+      *)
+        echo "Unknown option: $1"
+        exit 1
+        ;;
+    esac
+  done
+
+  # Build if requested
+  if [ "$do_build" = true ]; then
+    cmd_build
+  else
+    echo "Skipping build..."
+    if ! docker image inspect "$APP_IMAGE_NAME" > /dev/null 2>&1; then
+      echo "Error: Image $APP_IMAGE_NAME not found. Run 'bin/deploy build' first."
+      exit 1
+    fi
+    export APP_IMAGE_DIGEST=$(docker image inspect --format='{{.Id}}' "$APP_IMAGE_NAME")
+  fi
+
+  echo "Deploying stack: $APP_STACK_NAME"
+  docker stack deploy -c compose.prod.yaml --detach=false --prune "$APP_STACK_NAME"
+
+  echo ""
+  echo "Deployment initiated."
+  echo "Use 'bin/deploy status' to check service status."
+  echo "Use 'bin/deploy logs [SERVICE]' to view logs."
+}
+
+# Remove Docker Stack
+cmd_down() {
+  echo "Removing stack: $APP_STACK_NAME"
+  docker stack rm "$APP_STACK_NAME"
+  echo "Stack removed. Services will be stopped gracefully."
+}
+
+# Restart service(s)
+cmd_restart() {
+  local service_name="${1:-}"
+
+  if [ -z "$service_name" ]; then
+    # Restart all services in the stack
+    echo "Restarting all services in stack: $APP_STACK_NAME"
+    for service in $(docker stack services "$APP_STACK_NAME" --format "{{.Name}}"); do
+      echo "Restarting service: $service"
+      docker service update --force "$service"
+    done
+  else
+    # Restart specific service
+    local full_service_name="${APP_STACK_NAME}_${service_name}"
+    echo "Restarting service: $full_service_name"
+    docker service update --force "$full_service_name"
+  fi
+
+  echo "Restart initiated. Use 'bin/deploy status' to check progress."
+}
+
+# Show service status
+cmd_status() {
+  echo "Stack: $APP_STACK_NAME"
+  echo ""
+
+  if ! docker stack ps "$APP_STACK_NAME" > /dev/null 2>&1; then
+    echo "Stack not found or no services running."
+    exit 1
+  fi
+
+  docker stack ps "$APP_STACK_NAME" --no-trunc
+}
+
+# Show service logs
+cmd_logs() {
+  local service_name="${1:-}"
+
+  if [ -z "$service_name" ]; then
+    echo "Error: SERVICE name required"
+    echo "Usage: bin/deploy logs SERVICE"
+    echo ""
+    echo "Available services:"
+    docker stack services "$APP_STACK_NAME" --format "  {{.Name}}" | sed "s/${APP_STACK_NAME}_//"
+    exit 1
+  fi
+
+  local full_service_name="${APP_STACK_NAME}_${service_name}"
+  echo "Showing logs for: $full_service_name"
+  echo "Press Ctrl+C to exit"
+  echo ""
+
+  docker service logs -f "$full_service_name"
+}
+
+# Main
+main() {
+  if [ $# -eq 0 ]; then
+    show_help
+    exit 1
+  fi
+
+  local command=$1
+  shift
+
+  case $command in
+    build)
+      load_env
+      set_deploy_vars
+      cmd_build
+      ;;
+    up)
+      load_env
+      set_deploy_vars
+      cmd_up "$@"
+      ;;
+    down)
+      load_env
+      set_deploy_vars
+      cmd_down
+      ;;
+    restart)
+      load_env
+      set_deploy_vars
+      cmd_restart "$@"
+      ;;
+    status)
+      load_env
+      set_deploy_vars
+      cmd_status
+      ;;
+    logs)
+      load_env
+      set_deploy_vars
+      cmd_logs "$@"
+      ;;
+    --help|-h|help)
+      show_help
+      ;;
+    *)
+      echo "Error: Unknown command: $command"
+      echo ""
+      show_help
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

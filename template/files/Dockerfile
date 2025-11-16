@@ -3,24 +3,20 @@
 
 # Use Debian slim for better jemalloc compatibility and memory optimization
 # Note: Alpine + jemalloc can cause segfaults due to musl libc incompatibility
-FROM docker.io/library/ruby:3.4.7-slim AS base
+FROM docker.io/library/ruby:3.4.7-slim-trixie AS base
 
 WORKDIR /rails
 
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y curl libjemalloc2 libvips gnupg lsb-release && \
-    # Add PostgreSQL official repository for version 18
-    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
-    apt-get update -qq && \
-    apt-get install --no-install-recommends -y postgresql-client-18 && \
+    apt-get install --no-install-recommends -y curl libjemalloc2 libvips libpq5 postgresql-client procps && \
     ln -s /usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 ARG RAILS_ENV="production"
-ARG BUNDLE_DEPLOYMENT=true
+ARG BUNDLE_DEPLOYMENT="true"
 ARG BUNDLE_WITHOUT="development:test"
-ARG REVISION=""
+ARG APP_VERSION
+ARG APP_REVISION
 
 # Enable jemalloc for reduced memory usage and latency
 # YJIT enabled for 15-20% performance improvement
@@ -33,19 +29,20 @@ ENV RAILS_ENV=${RAILS_ENV} \
     RUBYOPT="--enable-frozen-string-literal" \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    REVISION=${REVISION} \
+    APP_VERSION=${APP_VERSION} \
+    APP_REVISION=${APP_REVISION} \
     LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
     MALLOC_CONF="dirty_decay_ms:1000,narenas:2,background_thread:true"
 
 # Throw-away build stage to reduce size of final image
 FROM base AS build
 
-ARG GITLAB_HOST="gitlab.com"
-
 # Install packages needed to build gems
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential git libpq-dev libyaml-dev pkg-config && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# ARG GITLAB_HOST="gitlab.com"
 
 # Configure git credentials for private repositories (optional)
 # This allows bundler to fetch gems from private GitHub/GitLab repositories
@@ -71,7 +68,6 @@ RUN apt-get update -qq && \
 #   # Set secure permissions if credentials file exists
 #   if [ -f ~/.git-credentials ]; then chmod 600 ~/.git-credentials; fi
 
-# Install application gems
 COPY Gemfile Gemfile.lock ./
 
 RUN bundle install && \
@@ -80,18 +76,20 @@ RUN bundle install && \
     # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
     bundle exec bootsnap precompile -j 1 --gemfile
 
-# Copy application code
 COPY . .
 
 # Precompile bootsnap code for faster boot times
-# -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
 RUN bundle exec bootsnap precompile -j 1 app/ lib/
-
 
 # Final stage for app image
 FROM base
 
-# Run and own only the runtime files as a non-root user for security
+ARG APP_VERSION
+ARG APP_REVISION
+
+LABEL version=$APP_VERSION
+LABEL revision=$APP_REVISION
+
 ARG APP_UID=1000
 ARG APP_GID=1000
 RUN groupadd --system --gid ${APP_GID} rails && \
@@ -102,7 +100,6 @@ USER ${APP_UID}:${APP_GID}
 COPY --chown=rails:rails --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --chown=rails:rails --from=build /rails /rails
 
-# Entrypoint prepares the database
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 
 # Start server via Puma by default (or use Thruster for HTTP/2 support)

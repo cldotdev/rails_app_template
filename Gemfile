@@ -11,6 +11,7 @@ ruby ">= 3.4.0"
 # Code quality tools
 gem "rubocop", "~> 1.81"
 gem "rubocop-rails", "~> 2.33"
+gem "rubocop-rake"
 gem "rubocop-rspec", "~> 3.7"
 
 # Development dependencies

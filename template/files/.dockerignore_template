@@ -7,8 +7,8 @@
 /.bundle
 
 # All environment files
-/.env*
-!/.env.example
+/.env
+/.env.*
 
 # All default key files
 /config/master.key
@@ -30,11 +30,6 @@
 /tmp/storage/*
 !/tmp/storage/.keep
 
-# Test files and coverage reports
-/test/
-/spec/
-/coverage/
-
 # Documentation
 /docs/
 
@@ -49,19 +44,16 @@
 /.devcontainer
 .pry_history
 
-# Docker files
+# Docker deployment files
 /.dockerignore
 /Dockerfile*
 /compose.yaml
 /compose.yml
 /compose.*.yaml
 /compose.*.yml
-
-# Docker secrets
 /.secrets/
-
-# Docker runtime data
 /.srv/
+/bin/deploy
 
 # Ignore editor temp files
 \#*\#

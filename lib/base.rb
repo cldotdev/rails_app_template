@@ -36,3 +36,38 @@ def update_yaml(file_path, data)
   end
   File.write(file_path, ast.yaml)
 end
+
+# Lifecycle hooks for managing execution order
+# Recipes can register callbacks for different phases to ensure proper timing
+module LifecycleHooks
+  class << self
+    def after_generators_callbacks
+      @after_generators_callbacks ||= []
+    end
+
+    def register_after_generators(&block)
+      after_generators_callbacks << block
+    end
+
+    def run_after_generators
+      after_generators_callbacks.each(&:call)
+    end
+  end
+end
+
+# Register a callback to run after all generators complete
+# This ensures gems are fully loaded before initializers that depend on them
+#
+# Example usage in recipe:
+#   after_generators do
+#     initializer "my_gem.rb", "MyGem.configure do; end"
+#   end
+def after_generators(&)
+  LifecycleHooks.register_after_generators(&)
+end
+
+# Execute all registered after_generators callbacks
+# Called from template/api.rb after all generators have finished
+def run_after_generators
+  LifecycleHooks.run_after_generators
+end

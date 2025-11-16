@@ -17,12 +17,16 @@ if ruby_version < required_version
   say "   Please consider upgrading to Ruby 3.4 or later", :yellow
 end
 
+# Use mise.toml for version management instead of .ruby-version
 remove_file ".ruby-version"
-create_file ".ruby-version", RUBY_VERSION
+template from_files("mise.toml"), "mise.toml"
 
 # Replace default .gitignore with enhanced version
 remove_file ".gitignore"
 copy_file from_files(".gitignore_template"), ".gitignore"
+
+# Add .gitattributes for Git configuration
+copy_file from_files(".gitattributes"), ".gitattributes"
 
 # Replace Rails 8 default .rubocop.yml with custom configuration
 remove_file ".rubocop.yml"
@@ -34,8 +38,11 @@ remove_file ".dockerignore"
 copy_file from_files(".dockerignore_template"), ".dockerignore"
 
 # Add Docker compose templates
+# compose.yaml: Development environment (default)
+# compose.prod.yaml: Production environment
+# compose.test.yaml: Test environment
 copy_file from_files("compose.yaml"), "compose.yaml"
-copy_file from_files("compose.dev.yaml"), "compose.dev.yaml"
+copy_file from_files("compose.prod.yaml"), "compose.prod.yaml"
 copy_file from_files("compose.test.yaml"), "compose.test.yaml"
 
 # Add Dockerfile template
@@ -49,6 +56,12 @@ remove_file "bin/docker-entrypoint"
 copy_file from_files("docker-entrypoint.sh"), "bin/docker-entrypoint"
 chmod "bin/docker-entrypoint", 0o755
 
+# Add custom bin scripts
+copy_file from_files("bin/jobs"), "bin/jobs"
+copy_file from_files("bin/deploy"), "bin/deploy"
+chmod "bin/jobs", 0o755
+chmod "bin/deploy", 0o755
+
 # Add .env.example for environment configuration
 copy_file from_files(".env.example"), ".env.example"
 
@@ -59,6 +72,10 @@ directory from_files(".secrets"), ".secrets"
 # 700: Only owner can read/write/execute (prevents other users from listing)
 # This is required for Docker Compose to properly mount secrets
 after_bundle do
+  # Ensure bundler setup is complete before any generators run
+  # This prevents LoadError when initializers are loaded during generator execution
+  Bundler.setup
+
   run "chmod 700 .secrets" if File.directory?(".secrets")
 
   # Set 640 permissions for secret files (owner: rw, group: r, others: none)
@@ -71,7 +88,11 @@ after_bundle do
   end
 end
 
-# Set test environment to use :test queue adapter
+# Configure Active Job queue adapters
+# Development and production use Sidekiq (configured in recipe/sidekiq.rb)
+# Test environment uses :test adapter for immediate execution
+environment "config.active_job.queue_adapter = :sidekiq", env: "development"
+environment "config.active_job.queue_adapter = :sidekiq", env: "production"
 environment "config.active_job.queue_adapter = :test", env: "test"
 
 # Core recipes (gems with installation and configuration)
@@ -85,6 +106,7 @@ recipe "pagy"
 recipe "pundit"
 recipe "rack_attack"
 recipe "redis"
+recipe "sidekiq"
 recipe "rspec"
 recipe "pg_query"
 recipe "rubocop"
@@ -116,16 +138,9 @@ recipe "database_yml"
 # (sequences, views, functions, etc.)
 environment "config.active_record.schema_format = :sql"
 
-# Create directories for multiple database migrations
-%w[queue cache cable].each do |db|
-  empty_directory "db/#{db}_migrate"
-end
-
-# Create empty structure.sql files for multiple databases
+# Create empty structure.sql file for primary database
 after_bundle do
-  %w[structure cable_structure cache_structure queue_structure].each do |file|
-    create_file "db/#{file}.sql", "-- PostgreSQL database schema\n"
-  end
+  create_file "db/structure.sql", "-- PostgreSQL database schema\n"
 end
 
 recipe "uuidv7"
@@ -149,9 +164,19 @@ recipe "action_cable"
 recipe "openapi_doc"
 # recipe "google-cloud-storage"
 
-run "bundle install"
+# Replace default README.md with comprehensive setup guide
+remove_file "README.md"
+copy_file from_files("README.md"), "README.md"
 
-# Auto-fix code style issues with RuboCop
+# Execute all after_generators callbacks registered by recipes
+# This runs after all generators complete to ensure gems are loaded
+after_bundle do
+  run_after_generators
+end
+
+# Auto-fix code style issues with RuboCop after bundle install
 # This ensures the generated project follows RuboCop style guidelines
-say "Running RuboCop auto-corrections..."
-run "bundle exec rubocop -A"
+after_bundle do
+  say "Running RuboCop auto-corrections..."
+  run "bundle exec rubocop -A"
+end

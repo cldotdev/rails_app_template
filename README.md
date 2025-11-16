@@ -6,16 +6,26 @@ Rails 8.1 + Ruby 3.4 API template with production-ready configuration.
 
 - API-only (PostgreSQL 18, Valkey 8)
 - UUIDv7 primary keys
+- Server/Worker architecture (Sidekiq)
 - Docker configuration with secrets management
 - Structured logging (Lograge)
 - Complete test setup (RSpec, FactoryBot, Prosopite)
 - Security (Rack::Attack, Pundit, JWT, Sentry)
-- YJIT enabled (15-30% performance boost)
+- YJIT enabled
+
+## Architecture
+
+- Framework: Ruby on Rails 8.1 (API mode)
+- Database: PostgreSQL 18
+- Cache: Valkey (redis_cache) - Ephemeral
+- Background Jobs: Sidekiq (redis_queue) - Persistent
+- WebSocket: ActionCable with Valkey adapter (redis_cable) - Ephemeral
+- Session Storage: Valkey (redis_session) - Persistent
 
 ## Usage
 
 ```bash
-rails new <project_name> --api -d postgresql --skip-test -m rails_app_template/template/api.rb
+rails new <project_name> --api -d postgresql --skip-test --skip-solid -m rails_app_template/template/api.rb
 ```
 
 ## Configuration
@@ -53,53 +63,73 @@ AppConfig.instance.redis_cache_password
 
 Three separate compose files for different environments:
 
-- **compose.yaml** - Production environment with external secrets
-- **compose.dev.yaml** - Development environment with file secrets and volume mounts
+- **compose.yaml** - Development environment (default) with optional secrets
+- **compose.prod.yaml** - Production environment with external secrets
 - **compose.test.yaml** - Test environment with minimal services (pg + rails only)
 
 #### Development
 
 ```bash
-# Create secrets directory
-mkdir -p .secrets
-
-# Generate secrets (example)
-openssl rand -hex 64 > .secrets/database_password
-openssl rand -hex 64 > .secrets/redis_cache_password
-openssl rand -hex 64 > .secrets/redis_cable_password
-openssl rand -hex 64 > .secrets/redis_session_password
-openssl rand -hex 64 > .secrets/rails_secret_key_base
-echo "your-smtp-password" > .secrets/mailer_smtp_password
-echo "your-cloudflare-tunnel-token" > .secrets/cf_tunnel_token
-
 # Copy and configure environment variables
 cp .env.example .env
 # Edit .env with your configuration
 
+# (Optional) Create secrets for mailer and Cloudflare Tunnel
+# Note: PostgreSQL uses trust authentication (no password)
+# Note: Redis services run without authentication in development
+mkdir -p .secrets
+echo "your-smtp-password" > .secrets/mailer_smtp_password
+echo "your-cloudflare-tunnel-token" > .secrets/cf_tunnel_token
+
 # Build with host user permissions (for volume mounting)
 # Set APP_UID/APP_GID to match host user for proper file permissions
-APP_UID=$(id -u) APP_GID=$(id -g) docker compose -f compose.dev.yaml build
+APP_UID=$(id -u) APP_GID=$(id -g) docker compose build
 
 # Start services
-docker compose -f compose.dev.yaml up -d
+docker compose up -d
 ```
 
-#### Production
+#### Production (Docker Swarm)
+
+Production deployment uses Docker Swarm for orchestration and high availability.
 
 ```bash
+# Initialize Docker Swarm (if not already initialized)
+docker swarm init
+
 # Create Docker secrets
-echo "your-secret" | docker secret create rails_app_database_password -
+echo "your-secret" | docker secret create rails_app_pg_password -
 echo "your-secret" | docker secret create rails_app_redis_cache_password -
 echo "your-secret" | docker secret create rails_app_redis_cable_password -
 echo "your-secret" | docker secret create rails_app_redis_session_password -
+echo "your-secret" | docker secret create rails_app_redis_queue_password -
 echo "your-secret" | docker secret create rails_app_rails_secret_key_base -
 echo "your-secret" | docker secret create rails_app_mailer_smtp_password -
 echo "your-secret" | docker secret create rails_app_cf_tunnel_token -
 
-# Build and deploy
-REVISION=$(git rev-parse --short HEAD) docker compose build
-docker compose up -d
+# Configure environment variables
+cp .env.example .env.prod
+# Edit .env.prod with your production configuration
+
+# Build and deploy to Docker Stack
+bin/deploy build           # Build Docker image
+bin/deploy up              # Deploy stack
+
+# Or build and deploy in one command
+bin/deploy up --build
+
+# Manage deployment
+bin/deploy status          # Check service status
+bin/deploy logs server     # View server logs
+bin/deploy logs worker     # View worker logs
+bin/deploy restart         # Restart all services
+bin/deploy restart server  # Restart specific service
+bin/deploy down            # Remove stack
 ```
+
+**Environment Variables:**
+- `APP_STACK_NAME` - Stack name (default: rails-app)
+- `APP_IMAGE_NAME` - Image name (default: local/rails-app:REVISION)
 
 #### Testing
 
@@ -135,7 +165,6 @@ docker compose -f compose.test.yaml run --rm rails bundle exec rspec
 - **factory_bot_rails** - Test data factories
 - **faker** - Generate fake data
 - **shoulda-matchers** - RSpec matchers
-- **mock_redis** - Mock Redis for testing
 - **prosopite** - N+1 query detection
 
 ### Development

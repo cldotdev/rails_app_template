@@ -17,20 +17,11 @@
 /storage/*
 !/storage/.keep
 
-# Database schema (using structure.sql instead of schema.rb)
-/db/schema.rb
-
 # Debugging history
 .pry_history
 
 # Ignore master key for decrypting credentials and more.
 /config/master.key
-
-# Config gem's local settings
-config/settings.local.yml
-config/settings/*.local.yml
-config/environments/*.local.yml
-config/gcloud.json
 
 # Editor directories and files
 .vscode/*
@@ -59,15 +50,15 @@ compose.*.local.yml
 
 # Environment files
 .env
-
-# Test coverage and reports
-/coverage/
+.env.*
+!.env.example
 
 # RuboCop cache
 .rubocop-*
 
 # Cache directories
 .cache/
+.ruby-lsp/
 
 # Claude Code
 .claude/settings.local.json
@@ -75,3 +66,6 @@ compose.*.local.yml
 .claude/*.log
 .claude/cache/
 .serena/
+
+# Database schema (using structure.sql instead of schema.rb)
+/db/schema.rb

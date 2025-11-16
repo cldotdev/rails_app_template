@@ -1,8 +1,9 @@
-#!/bin/bash -e
+#!/bin/bash
+set -e
 
 # Helper function to read secret from file
-# Usage: read_secret ENV_VAR_NAME FILE_ENV_VAR_NAME
-read_secret() {
+# Usage: set_secret ENV_VAR_NAME FILE_ENV_VAR_NAME
+set_secret() {
   local var_name="$1"
   local file_var_name="$2"
 
@@ -10,33 +11,29 @@ read_secret() {
   if [ -n "${!file_var_name}" ]; then
     local secret_file="${!file_var_name}"
 
-    # Read from file if exists and env var not already set
-    if [ -z "${!var_name}" ] && [ -f "$secret_file" ]; then
-      export "$var_name"="$(cat "$secret_file")"
+    # Skip if secret file path is empty
+    if [ -z "$secret_file" ]; then
+      return 0
     fi
+
+    # Skip if secret file doesn't exist
+    if [ ! -f "$secret_file" ]; then
+      return 0
+    fi
+
+    # Read from file and export
+    export "$var_name"="$(cat "$secret_file")"
   fi
 }
 
-# Remove pre-existing server.pid for Rails
 rm -f /rails/tmp/pids/server.pid
 
 # Set secrets from files
 set_secret "SECRET_KEY_BASE" "APP_SECRET_KEY_BASE_FILE"
 
-# Database preparation (optional, controlled by RAILS_DB_PREPARE)
-if [ "${APP_RAILS_DB_PREPARE:-false}" = "true" ]; then
-  if command -v pg_isready > /dev/null 2>&1; then
-    until pg_isready -h "${APP_POSTGRES_HOST}" -U "${APP_POSTGRES_USER}" > /dev/null 2>&1; do
-      echo "Waiting for PostgreSQL to be ready..."
-      sleep 2
-    done
-    echo "PostgreSQL is ready!"
-  fi
-
-  # Run database preparation (creates DB if needed, runs migrations)
-  echo "Running database preparation..."
+if [ "${APP_DB_MIGRATION:-false}" = "true" ]; then
+  echo "Running database migration..."
   ./bin/rails db:prepare
 fi
 
-# Execute the main command (use exec to replace shell process)
 exec "${@}"

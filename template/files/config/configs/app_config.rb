@@ -33,6 +33,11 @@ class AppConfig < Anyway::Config
               :redis_cable_port,
               :redis_cable_password_file
 
+  # Redis Queue Configuration (for Sidekiq)
+  attr_config :redis_queue_host,
+              :redis_queue_port,
+              :redis_queue_password_file
+
   # Rails Core Configuration
   attr_config :time_zone,
               :allowed_hosts,
@@ -94,6 +99,7 @@ class AppConfig < Anyway::Config
                redis_cache_port:                        :integer,
                redis_session_port:                      :integer,
                redis_cable_port:                        :integer,
+               redis_queue_port:                        :integer,
                allowed_hosts:                           { type: :string, array: true },
                cors_allowed_origins:                    { type: :string, array: true },
                email_verification_code_lifetime:        :integer,
@@ -159,6 +165,10 @@ class AppConfig < Anyway::Config
 
   def redis_cable_password
     read_file(redis_cable_password_file)
+  end
+
+  def redis_queue_password
+    read_file(redis_queue_password_file)
   end
 
   def mailer_smtp_password

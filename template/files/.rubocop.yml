@@ -12,6 +12,7 @@ AllCops:
   NewCops: enable
   TargetRubyVersion: 3.4
   TargetRailsVersion: 8.0
+  SuggestExtensions: false
   Exclude:
     - bin/*
     - db/schema.rb
@@ -20,10 +21,12 @@ AllCops:
     - node_modules/**/*
     - vendor/**/*
 
-# Load RuboCop extensions using plugin mechanism
 plugins:
   - rubocop-rails
+  - rubocop-rake
   - rubocop-rspec
+  - rubocop-rspec_rails
+  - rubocop-factory_bot
 
 Layout/FirstArgumentIndentation:
   EnforcedStyle: special_for_inner_method_call_in_parentheses
@@ -172,4 +175,15 @@ RSpec/NestedGroups:
 # API tests may use descriptive context names beyond "when/with/without"
 # Examples: "environment files", "git files", etc. are clear in API security testing
 RSpec/ContextWording:
+  Enabled: false
+
+# FactoryBot configurations
+# Control maximum number of records created in a single create_list call
+FactoryBot/ExcessiveCreateList:
+  MaxAmount: 15
+
+# RSpec Rails configurations
+# Project explicitly uses type: metadata instead of automatic inference
+# Do not enforce InferredSpecType since infer_spec_type_from_file_location! is disabled
+RSpecRails/InferredSpecType:
   Enabled: false
