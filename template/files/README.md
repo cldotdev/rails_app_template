@@ -59,8 +59,7 @@ Database migrations run automatically on container startup by default (`APP_DB_M
 The test environment uses PostgreSQL and Valkey for testing with real Redis instances.
 
 ```sh
-docker compose -f compose.test.yaml build
-docker compose -f compose.test.yaml run --rm rails bundle exec rspec
+docker compose -f compose.test.yaml run --rm --build server bundle exec rspec
 ```
 
 ### Production Environment

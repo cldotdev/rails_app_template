@@ -54,58 +54,10 @@ services:
   redis_session:
     <<: [*common, *redis-common]
     command: redis-server --save ""
-  rails:
+  server:
     <<: [*common, *rails-common]
     environment:
       APP_RAILS_MAX_THREADS: 5
       APP_RAILS_MIN_THREADS: 5
       APP_WEB_CONCURRENCY: 0
       APP_ADMIN_EMAIL: admin@example.com
-    develop:
-      watch:
-        - action: sync
-          path: .
-          target: /rails
-          ignore:
-            # Version control
-            - .git/
-            - .github/
-
-            # Dependencies
-            - .bundle/
-            - vendor/bundle/
-
-            # Environment & secrets
-            - .env*
-            - .secrets/
-
-            # Runtime data
-            - .srv/
-            - log/
-            - tmp/
-            - storage/
-
-            # Caches
-            - .cache/
-            - .rubocop-*
-            - .ruby-lsp/
-
-            # Editor & IDE
-            - .claude/
-            - .serena/
-            - CLAUDE.md
-            - .vscode/
-            - .idea/
-            - .devcontainer/
-
-            # Docker files
-            - .dockerignore
-            - Dockerfile*
-            - compose.yaml
-            - compose.yml
-            - compose.*.yaml
-            - compose.*.yml
-
-            # Deployment
-            - .kamal/
-            - bin/deploy
