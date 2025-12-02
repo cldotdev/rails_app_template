@@ -54,6 +54,14 @@ The `--watch` flag enables automatic syncing of code changes to the container wi
 
 Database migrations run automatically on container startup by default (`APP_DB_MIGRATION=true`). Set to `false` in `.env` to disable.
 
+When developing with database schema changes, update `db/structure.sql` using one-time containers with volume mount:
+
+```sh
+docker compose run --rm -v $(pwd)/db:/rails/db server bundle exec rails db:migrate
+```
+
+The `-v $(pwd)/db:/rails/db` flag syncs `structure.sql` changes back to host.
+
 ### Test Environment
 
 The test environment uses PostgreSQL and Valkey for testing with real Redis instances.
